@@ -5,13 +5,13 @@ mod credentials;
 
 #[derive(Subcommand)]
 enum Commands {
-    #[command(about = "Create a new credential set.")]
-    New {
+    #[command(about = "Create a new credential set for an auth0 m2m application.")]
+    Set {
         /// The name of the credential set to Create.
         app: String,
     },
-    #[command(about = "Log yourself in to a configured application. Prints a token to stdout.")]
-    Login {
+    #[command(about = "Fetch an `access_token` and print the response to stdout.")]
+    Fetch {
         /// The name of the application to login with
         app: String,
     },
@@ -27,12 +27,12 @@ struct Cli {
 fn main() -> credentials::AppResult<()> {
     let cli = Cli::parse();
     match &cli.command {
-        Commands::New { app } => execute_new(app),
-        Commands::Login { app } => execute_login(app),
+        Commands::Set { app } => execute_set(app),
+        Commands::Fetch { app } => execute_fetch(app),
     }
 }
 
-fn execute_new(app: &String) -> credentials::AppResult<()> {
+fn execute_set(app: &String) -> credentials::AppResult<()> {
     let home_path = credentials::HomePath::new(None).with_context(|| "Home path not found.")?;
     let mut app_dir = home_path.app_dir(app);
 
@@ -56,7 +56,7 @@ fn execute_new(app: &String) -> credentials::AppResult<()> {
     Ok(())
 }
 
-fn execute_login(app: &String) -> credentials::AppResult<()> {
+fn execute_fetch(app: &String) -> credentials::AppResult<()> {
     let home_path = credentials::HomePath::new(None).with_context(|| "Home path not found.")?;
     let mut app_dir = home_path.app_dir(app);
 
@@ -71,9 +71,9 @@ fn execute_login(app: &String) -> credentials::AppResult<()> {
         .with_context(|| "Could not load json config file.")?;
 
     // This response needs some handling. Look up the deref context in reqwest.
-    let token = creds.fetch().with_context(|| "Failed to fetch token.")?;
+    let t = creds.fetch().with_context(|| "Failed to fetch token.")?;
 
-    println!("{}", serde_json::to_string(&token)?);
+    println!("{}", t.access_token());
 
     Ok(())
 }

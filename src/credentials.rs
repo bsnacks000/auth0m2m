@@ -21,6 +21,12 @@ pub struct Token {
     token_type: String,
 }
 
+impl Token {
+    pub fn access_token(&self) -> &str {
+        &self.access_token
+    }
+}
+
 impl Auth0M2MCredentials {
     pub fn new(client_id: String, client_secret: String, audience: String, domain: String) -> Self {
         Self {
