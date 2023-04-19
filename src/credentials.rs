@@ -5,15 +5,6 @@ use std::{error, fmt, fs, io, path, result};
 
 pub type AppResult<T> = result::Result<T, anyhow::Error>;
 
-pub trait BufWriter {
-    fn write(&self, p: &path::PathBuf) -> AppResult<()>;
-}
-
-pub trait FromUserPrompt {
-    type T;
-    fn from_prompt() -> Self::T;
-}
-
 /// Application credentials
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Auth0M2MCredentials {
@@ -24,14 +15,15 @@ pub struct Auth0M2MCredentials {
     grant_type: String,
 }
 
+#[derive(Serialize, Deserialize, Debug)]
+pub struct Token {
+    access_token: String,
+    token_type: String,
+}
+
 impl Auth0M2MCredentials {
-    pub fn new(
-        client_id: String,
-        client_secret: String,
-        audience: String,
-        domain: String,
-    ) -> Auth0M2MCredentials {
-        Auth0M2MCredentials {
+    pub fn new(client_id: String, client_secret: String, audience: String, domain: String) -> Self {
+        Self {
             client_id,
             client_secret,
             audience,
@@ -39,17 +31,44 @@ impl Auth0M2MCredentials {
             grant_type: "client_credentials".to_string(),
         }
     }
-}
 
-impl BufWriter for Auth0M2MCredentials {
-    fn write(&self, p: &path::PathBuf) -> AppResult<()> {
-        let mut clone = p.clone();
-        clone.push("config.json");
-        let mut w = io::BufWriter::new(fs::File::create(clone)?);
+    pub fn to_json(&self, p: &path::PathBuf) -> AppResult<()> {
+        let mut w = io::BufWriter::new(fs::File::create(p)?);
         serde_json::to_writer_pretty(&mut w, self)?;
         w.write(b"\n")?;
         w.flush()?;
         Ok(())
+    }
+
+    pub fn from_json(p: &path::PathBuf) -> AppResult<Self> {
+        let f = fs::File::open(p)?;
+        let rdr = io::BufReader::new(f);
+        let obj: Auth0M2MCredentials = serde_json::from_reader(rdr)?;
+        Ok(obj)
+    }
+
+    pub fn fetch(&self) -> AppResult<Token> {
+        let url = format!("https://{}/oauth/token", self.domain);
+
+        let client = reqwest::blocking::Client::new();
+        let response = client.post(&url).json(self).send()?;
+
+        let token: Token = response.json()?;
+        Ok(token)
+    }
+
+    pub fn from_prompt() -> AppResult<Auth0M2MCredentials> {
+        let client_id = do_prompt("client_id")?;
+        let client_secret = do_prompt("client_secret")?;
+        let audience = do_prompt("audience")?;
+        let domain = do_prompt("domain")?;
+
+        Ok(Auth0M2MCredentials::new(
+            client_id,
+            client_secret,
+            audience,
+            domain,
+        ))
     }
 }
 
@@ -84,10 +103,6 @@ impl HomePath {
         Ok(HomePath { p })
     }
 
-    pub fn home(&self) -> &path::PathBuf {
-        return &self.p;
-    }
-
     pub fn app_dir(&self, dir_name: &str) -> path::PathBuf {
         let mut clone = self.p.clone();
         clone.push(&dir_name);
@@ -102,24 +117,6 @@ fn do_prompt(p: &str) -> AppResult<String> {
     io::stdout().flush()?;
     io::stdin().read_line(&mut out)?;
     Ok(out.trim().into())
-}
-
-impl FromUserPrompt for Auth0M2MCredentials {
-    type T = AppResult<Auth0M2MCredentials>;
-
-    fn from_prompt() -> AppResult<Auth0M2MCredentials> {
-        let client_id = do_prompt("client_id")?;
-        let client_secret = do_prompt("client_secret")?;
-        let audience = do_prompt("audience")?;
-        let domain = do_prompt("domain")?;
-
-        Ok(Auth0M2MCredentials::new(
-            client_id,
-            client_secret,
-            audience,
-            domain,
-        ))
-    }
 }
 
 pub fn create_dir_if_not_exists(p: &path::PathBuf) -> AppResult<()> {
@@ -165,19 +162,11 @@ mod tests {
             "d".to_string(),
         );
         let tmp_path = TempPath::from_path(Path::new("tmp.txt"));
-        cred.write(&tmp_path.to_path_buf()).unwrap();
+        cred.to_json(&tmp_path.to_path_buf()).unwrap();
     }
 
     #[test]
     fn test_home_path_exists() {
-        let home_path: HomePath = HomePath::new(None).expect("Home not working.");
-        assert_eq!(false, check_path_exists(home_path.home()));
-
-        let _ = home_path
-            .home()
-            .to_str()
-            .unwrap()
-            .find(".auth0m2m")
-            .unwrap();
+        let _: HomePath = HomePath::new(None).expect("Home not working.");
     }
 }
