@@ -59,6 +59,13 @@ impl Auth0M2MCredentials {
         let client = reqwest::blocking::Client::new();
         let response = client.post(&url).json(self).send()?;
 
+        match response.error_for_status_ref() {
+            Ok(_) => (),
+            Err(err) => {
+                return Err(err.into());
+            }
+        }
+
         let token: Token = response.json()?;
         Ok(token)
     }
